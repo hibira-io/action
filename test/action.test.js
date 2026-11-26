@@ -153,6 +153,21 @@ test('wait: false only opens the request', async () => {
   assert.equal(outputs(env).url, 'https://hibira.io/a/apr_3');
 });
 
+test('approval-id waits for an earlier request until it expires', async () => {
+  let t = 1_700_000_000_000;
+  const srv = await serve((req) => {
+    assert.equal(req.method, 'GET');
+    assert.match(req.url, /^\/apps\/7\/approvals\/apr_9\?/);
+    t += 30_000;
+    return [200, { approval_id: 'apr_9', title: 'Deploy?', status: 'pending', url: 'u', expires_at: new Date(1_700_000_000_000 + 60_000).toISOString() }];
+  });
+  const env = envFor(srv.host, { 'APPROVAL-ID': 'apr_9', 'FAIL-ON-REJECT': 'false' });
+  await quietly(() => approval({ env, now: () => t, sleep: async () => {} }));
+  await srv.close();
+  assert.ok(srv.calls.length >= 3 && srv.calls.length <= 4, `calls: ${srv.calls.length}`);
+  assert.equal(outputs(env).status, 'pending');
+});
+
 test('approval gives up at the timeout', async () => {
   let t = 0;
   const srv = await serve((req) => {

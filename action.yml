@@ -49,6 +49,9 @@ inputs:
     description: "approval: fail the step when the answer is not approved (rejected or expired)."
     required: false
     default: "true"
+  approval-id:
+    description: "approval: wait for a request an earlier step opened with wait: false, instead of opening a new one."
+    required: false
   wait:
     description: "approval: wait for the answer. Set to false to only open the request and output its link."
     required: false

@@ -1,0 +1,151 @@
+name: e2e
+# Runs the action against the real Hibira service with a throwaway app,
+# created and deleted with the HIBIRA_API_TOKEN organization secret.
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency: e2e
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HIBIRA_API_TOKEN: ${{ secrets.HIBIRA_API_TOKEN }}
+      API: https://hibira.io/api/v1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Create a throwaway app
+        id: app
+        run: |
+          if [ -z "$HIBIRA_API_TOKEN" ]; then echo "::error::HIBIRA_API_TOKEN is not available to this repository"; exit 1; fi
+          out=$(curl -sS -f -X POST "$API/apps" -H "Authorization: Bearer $HIBIRA_API_TOKEN" -H 'Content-Type: application/json' \
+            -d "{\"name\":\"action-e2e-$GITHUB_RUN_ID\",\"allowed_origins\":[\"https://example.com\"]}")
+          secret=$(jq -r .secret <<<"$out")
+          echo "::add-mask::$secret"
+          echo "HIBIRA_APP_SECRET=$secret" >> "$GITHUB_ENV"
+          echo "id=$(jq -r .id <<<"$out")" >> "$GITHUB_OUTPUT"
+          echo "key=$(jq -r .key <<<"$out")" >> "$GITHUB_OUTPUT"
+
+      - name: event
+        uses: ./
+        with:
+          command: event
+          app-id: ${{ steps.app.outputs.id }}
+          key: ${{ steps.app.outputs.key }}
+          secret: ${{ env.HIBIRA_APP_SECRET }}
+          channel: deploys
+          event: deploy.finished
+          data: '{"run":"${{ github.run_id }}"}'
+
+      - name: approval (open)
+        id: ask
+        uses: ./
+        with:
+          command: approval
+          app-id: ${{ steps.app.outputs.id }}
+          key: ${{ steps.app.outputs.key }}
+          secret: ${{ env.HIBIRA_APP_SECRET }}
+          title: e2e ${{ github.run_id }}, approve me
+          timeout-minutes: 5
+          wait: false
+      - name: Answer it in the background (a question, then Approve)
+        env:
+          URL: ${{ steps.ask.outputs.url }}
+        run: |
+          test "${{ steps.ask.outputs.status }}" = pending
+          nohup bash -c 'sleep 8; curl -sS -o /dev/null -w "question %{http_code}\n" -X POST "$URL" --data-urlencode "question=Which environment?"; sleep 8; curl -sS -o /dev/null -w "answer %{http_code}\n" -X POST "$URL" --data-urlencode "choice=Approve" --data-urlencode "comment=from e2e"' > answer.log 2>&1 &
+      - name: approval (wait)
+        id: wait
+        uses: ./
+        with:
+          command: approval
+          app-id: ${{ steps.app.outputs.id }}
+          key: ${{ steps.app.outputs.key }}
+          secret: ${{ env.HIBIRA_APP_SECRET }}
+          approval-id: ${{ steps.ask.outputs.approval-id }}
+      - name: Check the approval
+        run: |
+          cat answer.log
+          test "${{ steps.wait.outputs.status }}" = approved
+          test "${{ steps.wait.outputs.choice }}" = Approve
+          test "${{ steps.wait.outputs.comment }}" = "from e2e"
+
+      - name: approval (rejected)
+        id: reject-ask
+        uses: ./
+        with:
+          command: approval
+          app-id: ${{ steps.app.outputs.id }}
+          key: ${{ steps.app.outputs.key }}
+          secret: ${{ env.HIBIRA_APP_SECRET }}
+          title: e2e ${{ github.run_id }}, reject me
+          wait: false
+      - env:
+          URL: ${{ steps.reject-ask.outputs.url }}
+        run: curl -sS -o /dev/null -w "answer %{http_code}\n" -X POST "$URL" --data-urlencode "choice=Reject"
+      - name: approval (rejected fails the step)
+        id: rejected
+        continue-on-error: true
+        uses: ./
+        with:
+          command: approval
+          app-id: ${{ steps.app.outputs.id }}
+          key: ${{ steps.app.outputs.key }}
+          secret: ${{ env.HIBIRA_APP_SECRET }}
+          approval-id: ${{ steps.reject-ask.outputs.approval-id }}
+      - run: |
+          test "${{ steps.rejected.outcome }}" = failure
+          test "${{ steps.rejected.outputs.status }}" = rejected
+
+      - name: Enable push
+        id: push
+        run: |
+          curl -sS -f -X POST "$API/apps/${{ steps.app.outputs.id }}/push" -H "Authorization: Bearer $HIBIRA_API_TOKEN" -H 'Content-Type: application/json' -d '{}' > /dev/null
+          out=$(curl -sS -f "$API/apps/${{ steps.app.outputs.id }}/push" -H "Authorization: Bearer $HIBIRA_API_TOKEN")
+          key=$(jq -r '.secret_key // empty' <<<"$out")
+          echo "::add-mask::$key"
+          echo "HIBIRA_PUSH_SECRET_KEY=$key" >> "$GITHUB_ENV"
+          echo "instance=$(jq -r .instance_id <<<"$out")" >> "$GITHUB_OUTPUT"
+      - name: push
+        uses: ./
+        with:
+          command: push
+          instance-id: ${{ steps.push.outputs.instance }}
+          push-secret-key: ${{ env.HIBIRA_PUSH_SECRET_KEY }}
+          push-interests: e2e
+          title: e2e ${{ github.run_id }}
+          body: Nobody is subscribed to this interest.
+
+      - name: waiting-room
+        uses: ./
+        with:
+          command: waiting-room
+          app-id: ${{ steps.app.outputs.id }}
+          key: ${{ steps.app.outputs.key }}
+          secret: ${{ env.HIBIRA_APP_SECRET }}
+          room: e2e
+          state: paused
+          admit-per-minute: 60
+      - name: waiting-room (open and admit)
+        id: room
+        uses: ./
+        with:
+          command: waiting-room
+          app-id: ${{ steps.app.outputs.id }}
+          key: ${{ steps.app.outputs.key }}
+          secret: ${{ env.HIBIRA_APP_SECRET }}
+          room: e2e
+          state: open
+          admit: 5
+      - run: test "${{ steps.room.outputs.status }}" = open
+
+      - name: Delete the app
+        if: always() && steps.app.outputs.id != ''
+        run: |
+          id=${{ steps.app.outputs.id }}
+          version=$(curl -sS -f "$API/apps/$id" -H "Authorization: Bearer $HIBIRA_API_TOKEN" | jq -r .version)
+          curl -sS -f -X DELETE "$API/apps/$id?version=$version" -H "Authorization: Bearer $HIBIRA_API_TOKEN" -o /dev/null -w "deleted %{http_code}\n"

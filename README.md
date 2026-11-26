@@ -64,11 +64,66 @@ The runner stays busy while it waits, so keep `timeout-minutes` close to how lon
 | `timeout-minutes` | How long to wait, 1 to 10080. Default 60. |
 | `fail-on-reject` | Fail the step when not approved. Default `true`. |
 | `wait` | `false` opens the request, outputs its link and moves on. Default `true`. |
+| `approval-id` | Wait for a request an earlier step opened with `wait: false`, instead of opening a new one. |
 | `approvers`, `quorum` | Who must answer and how many approvals are needed (apps in an Approvals workspace). |
 | `push-interests`, `push-users` | Send a push notification about the request through your app's push instance. |
 | `channel` | A channel that gets an `approval` event on request and decision. |
 
+Ask early, wait later: open the request at the start of the job so the approver can answer while the build runs, then wait for it right before the deploy.
+
+```yaml
+      - id: ask
+        uses: hibira-io/action@v1
+        with:
+          command: approval
+          app-id: ${{ vars.HIBIRA_APP_ID }}
+          key: ${{ vars.HIBIRA_APP_KEY }}
+          secret: ${{ secrets.HIBIRA_APP_SECRET }}
+          title: Deploy ${{ github.ref_name }} to production?
+          wait: false
+      - run: npm ci && npm run build
+      - uses: hibira-io/action@v1
+        with:
+          command: approval
+          app-id: ${{ vars.HIBIRA_APP_ID }}
+          key: ${{ vars.HIBIRA_APP_KEY }}
+          secret: ${{ secrets.HIBIRA_APP_SECRET }}
+          approval-id: ${{ steps.ask.outputs.approval-id }}
+      - run: ./deploy.sh
+```
+
 Outputs: `approval-id`, `url`, `status` (`approved`, `rejected`, `expired` or `pending`), `choice`, `comment`, `answered-by`.
+
+## Deploy notifications
+
+Put a step at the end of the deploy job with `if: always()`, so it runs whether the deploy passed or failed. Send an event for a live dashboard or status page, a push notification for your app's users, or both:
+
+```yaml
+      - if: always()
+        uses: hibira-io/action@v1
+        with:
+          command: event
+          app-id: ${{ vars.HIBIRA_APP_ID }}
+          key: ${{ vars.HIBIRA_APP_KEY }}
+          secret: ${{ secrets.HIBIRA_APP_SECRET }}
+          channel: deploys
+          event: deploy.finished
+          data: '{"repo":"${{ github.repository }}","version":"${{ github.ref_name }}","status":"${{ job.status }}","run":"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"}'
+      - if: success()
+        uses: hibira-io/action@v1
+        with:
+          command: push
+          instance-id: ${{ vars.HIBIRA_PUSH_INSTANCE_ID }}
+          push-secret-key: ${{ secrets.HIBIRA_PUSH_SECRET_KEY }}
+          push-interests: release-notes
+          title: Version ${{ github.ref_name }} is live
+```
+
+A browser on the dashboard receives it with any Pusher client:
+
+```js
+pusher.subscribe('deploys').bind('deploy.finished', (d) => showDeploy(d));
+```
 
 ## Realtime event
 
@@ -137,8 +192,8 @@ No dependencies and no build step: `npm test` runs the tests with Node's built-i
 
 `hibira-io/action` 讓 GitHub Actions workflow 直接使用 Hibira：
 
-- `approval`：部署前請人核准。審核者收到連結（可加推播），在手機上按核准後 job 才繼續；拒絕或逾時則 step 失敗。公開與私有 repo、任何 GitHub 方案都能用，審核者不需要 GitHub 帳號。
-- `event`：發送即時事件（例如把部署狀態推到儀表板），任何 Pusher client 都收得到。
+- `approval`：部署前請人核准。也可以在 job 開始時先發出請求（`wait: false`），建置完成後再用 `approval-id` 等待結果。審核者收到連結（可加推播），在手機上按核准後 job 才繼續；拒絕或逾時則 step 失敗。公開與私有 repo、任何 GitHub 方案都能用，審核者不需要 GitHub 帳號。
+- `event`：發送即時事件（例如把部署狀態推到儀表板），任何 Pusher client 都收得到。部署通知：在 job 最後加一個 `if: always()` 的 step，不論成功或失敗都會送出。
 - `push`：發送推播通知給你 app 的 Web、iOS、Android 使用者。
 - `waiting-room`：開啟、暫停、關閉排隊室或放人，可配合排程在發售時自動執行。
 

@@ -42,39 +42,28 @@ function setApprovalOutputs(a, env) {
 }
 
 export async function approval({ env = process.env, now, sleep = defaultSleep } = {}) {
-  const title = core.input('title', env);
-  if (!title) throw new Error('title is required for approval');
   const minutes = core.int('timeout-minutes', { min: 1, max: 10080 }, env) ?? 60;
-  const options = core.list('options', env);
   const app = appFrom(env, now);
-  const request = {
-    title,
-    details: core.input('details', env) || defaultDetails(env),
-    options: options.length ? options : ['Approve', 'Reject'],
-    expires_in_minutes: minutes,
-    agent: 'GitHub Actions',
-  };
-  const channel = core.list('channel', env)[0];
-  if (channel) request.channel = channel;
-  const interests = core.list('push-interests', env);
-  if (interests.length) request.push_interests = interests;
-  const users = core.list('push-users', env);
-  if (users.length) request.push_users = users;
-  const approvers = core.list('approvers', env);
-  if (approvers.length) request.approvers = approvers;
-  const quorum = core.int('quorum', { min: 1, max: 100 }, env);
-  if (quorum) request.quorum = quorum;
-
-  let a = await app.call('POST', '/approvals', { json: request });
-  setApprovalOutputs(a, env);
-  core.notice(`Waiting for an answer: ${a.url}`, title);
-  if (a.push_error) core.warning(`The push notification was not sent: ${a.push_error}`);
-  core.summary(`### Approval requested\n\n**${escapeMd(title)}**\n\n[Answer it here](${a.url})\n`, env);
+  const existing = core.input('approval-id', env);
+  let a;
+  if (existing) {
+    a = await app.call('GET', `/approvals/${encodeURIComponent(existing)}`);
+    setApprovalOutputs(a, env);
+    core.info(`Waiting for the answer to "${a.title}": ${a.url}`);
+  } else {
+    const request = newRequest(env, minutes);
+    a = await app.call('POST', '/approvals', { json: request });
+    setApprovalOutputs(a, env);
+    core.notice(`Waiting for an answer: ${a.url}`, request.title);
+    if (a.push_error) core.warning(`The push notification was not sent: ${a.push_error}`);
+    core.summary(`### Approval requested\n\n**${escapeMd(request.title)}**\n\n[Answer it here](${a.url})\n`, env);
+  }
 
   if (!core.bool('wait', true, env)) return a;
 
   const clock = now || Date.now;
-  const deadline = clock() + minutes * 60_000 + 30_000;
+  const expires = a.expires_at ? Date.parse(a.expires_at) : NaN;
+  const deadline = (Number.isNaN(expires) ? clock() + minutes * 60_000 : expires) + 30_000;
   const seen = new Set();
   while (a.status === 'pending') {
     const left = Math.floor((deadline - clock()) / 1000);
@@ -111,6 +100,30 @@ export async function approval({ env = process.env, now, sleep = defaultSleep } 
     throw new Error(`Not approved: ${line}`);
   }
   return a;
+}
+
+function newRequest(env, minutes) {
+  const title = core.input('title', env);
+  if (!title) throw new Error('title is required for approval (or approval-id, to wait for an earlier request)');
+  const options = core.list('options', env);
+  const request = {
+    title,
+    details: core.input('details', env) || defaultDetails(env),
+    options: options.length ? options : ['Approve', 'Reject'],
+    expires_in_minutes: minutes,
+    agent: 'GitHub Actions',
+  };
+  const channel = core.list('channel', env)[0];
+  if (channel) request.channel = channel;
+  const interests = core.list('push-interests', env);
+  if (interests.length) request.push_interests = interests;
+  const users = core.list('push-users', env);
+  if (users.length) request.push_users = users;
+  const approvers = core.list('approvers', env);
+  if (approvers.length) request.approvers = approvers;
+  const quorum = core.int('quorum', { min: 1, max: 100 }, env);
+  if (quorum) request.quorum = quorum;
+  return request;
 }
 
 export async function event({ env = process.env, now } = {}) {
