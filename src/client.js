@@ -119,6 +119,7 @@ export class TokenApp {
         return await this.request('PATCH', resource, { json, timeoutMs });
       } catch (err) {
         if (err.status !== 404) throw err;
+        if (json.admit_per_minute === undefined) throw new Error(`Waiting room ${decodeURIComponent(room[1])} does not exist yet: give admit-per-minute to create it`);
         return this.request('POST', '/waiting_rooms', { json: { id: decodeURIComponent(room[1]), ...json }, timeoutMs });
       }
     }

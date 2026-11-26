@@ -195,6 +195,8 @@ Instead of the app key and secret (and the push instance ID and secret key), giv
 
 Create the token in the [Hibira portal](https://hibira.io/portal) under Settings → AI agents, with read and write access. Limit it to the app and to the products the workflow uses (Realtime for `event`, Approvals for `approval`, Push for `push`, Waiting Room for `waiting-room`). Every change it makes shows in the account's activity log under the token's name.
 
+With a token, `waiting-room` creates a room that doesn't exist yet only when you give `admit-per-minute`.
+
 ## Host
 
 Every command takes `host`, the API host shown on your app page. The default is `https://ws.hibira.io`.

@@ -275,7 +275,7 @@ test('api-token: every command with only the app ID and a bearer token', async (
       case 'PATCH /api/v1/apps/7/waiting_rooms/drop':
         return [404, { error: 'no such room' }];
       case 'POST /api/v1/apps/7/waiting_rooms':
-        assert.deepEqual(b, { id: 'drop', state: 'open' });
+        assert.deepEqual(b, { id: 'drop', state: 'open', admit_per_minute: 100 });
         return [201, { state: 'open', waiting: 0, admitted: 0 }];
       case 'POST /api/v1/apps/7/waiting_rooms/drop/admit':
         assert.deepEqual(b, { count: 5 });
@@ -297,11 +297,12 @@ test('api-token: every command with only the app ID and a bearer token', async (
   const penv = tokenEnv({ 'PUSH-INTERESTS': 'release-notes', TITLE: 'Live', URL: 'https://example.com/c' });
   await quietly(() => push({ env: penv }));
   assert.equal(outputs(penv)['publish-id'], 'pub_1');
-  const wenv = tokenEnv({ ROOM: 'drop', STATE: 'open', ADMIT: '5' });
+  const wenv = tokenEnv({ ROOM: 'drop', STATE: 'open', ADMIT: '5', 'ADMIT-PER-MINUTE': '100' });
   await quietly(() => waitingRoom({ env: wenv }));
   assert.equal(outputs(wenv).admitted, '5');
+  await assert.rejects(quietly(() => waitingRoom({ env: tokenEnv({ ROOM: 'drop', STATE: 'open' }) })), /give admit-per-minute to create it/);
   await srv.close();
-  assert.equal(srv.calls.length, 7);
+  assert.equal(srv.calls.length, 8);
 });
 
 test('api-token needs app-id', async () => {

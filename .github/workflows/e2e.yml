@@ -197,6 +197,7 @@ jobs:
           api-token: ${{ env.HIBIRA_API_TOKEN }}
           room: e2e-token
           state: paused
+          admit-per-minute: 60
       - run: test "${{ steps.token-room.outputs.status }}" = paused
 
       - name: Delete the app
