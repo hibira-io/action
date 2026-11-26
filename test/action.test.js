@@ -251,6 +251,65 @@ test('a 522 from the edge is sent again; a 500 is not', async () => {
   await srv.close();
 });
 
+test('api-token: every command with only the app ID and a bearer token', async () => {
+  const srv = await serve((req, body) => {
+    assert.equal(req.headers.authorization, 'Bearer tok');
+    assert.ok(!req.url.includes('auth_signature'));
+    const u = new URL(req.url, 'http://x');
+    const key = `${req.method} ${u.pathname}`;
+    const b = body ? JSON.parse(body) : undefined;
+    switch (key) {
+      case 'POST /api/v1/apps/7/events':
+        assert.deepEqual(b, { event: 'deploy.finished', channels: ['deploys'], data: '{"ok":true}' });
+        return [200, { sent: true }];
+      case 'POST /api/v1/apps/7/approvals':
+        assert.equal(b.title, 'Deploy?');
+        assert.equal(b.agent, 'GitHub Actions');
+        return [201, { approval_id: 'apr_9', status: 'pending', url: 'https://hibira.io/approve/apr_9/t' }];
+      case 'GET /api/v1/apps/7/approvals/apr_9':
+        assert.equal(u.searchParams.get('wait'), '25');
+        return [200, { approval_id: 'apr_9', status: 'approved', choice: 'Approve' }];
+      case 'POST /api/v1/apps/7/push/send':
+        assert.deepEqual(b, { interests: ['release-notes'], title: 'Live', body: '', url: 'https://example.com/c' });
+        return [200, { publish_id: 'pub_1' }];
+      case 'PATCH /api/v1/apps/7/waiting_rooms/drop':
+        return [404, { error: 'no such room' }];
+      case 'POST /api/v1/apps/7/waiting_rooms':
+        assert.deepEqual(b, { id: 'drop', state: 'open' });
+        return [201, { state: 'open', waiting: 0, admitted: 0 }];
+      case 'POST /api/v1/apps/7/waiting_rooms/drop/admit':
+        assert.deepEqual(b, { count: 5 });
+        return [200, { state: 'open', waiting: 3, admitted: 5 }];
+    }
+    return [500, { error: `unexpected ${key}` }];
+  });
+  const tokenEnv = (inputs) => {
+    const env = envFor('http://unused.invalid', { 'API-TOKEN': 'tok', 'API-URL': srv.host, ...inputs });
+    delete env.INPUT_KEY;
+    delete env.INPUT_SECRET;
+    return env;
+  };
+  await quietly(() => event({ env: tokenEnv({ CHANNEL: 'deploys', EVENT: 'deploy.finished', DATA: '{"ok":true}' }) }));
+  const aenv = tokenEnv({ TITLE: 'Deploy?' });
+  await quietly(() => approval({ env: aenv, sleep: async () => {} }));
+  assert.equal(outputs(aenv).status, 'approved');
+  assert.equal(outputs(aenv).url, 'https://hibira.io/approve/apr_9/t');
+  const penv = tokenEnv({ 'PUSH-INTERESTS': 'release-notes', TITLE: 'Live', URL: 'https://example.com/c' });
+  await quietly(() => push({ env: penv }));
+  assert.equal(outputs(penv)['publish-id'], 'pub_1');
+  const wenv = tokenEnv({ ROOM: 'drop', STATE: 'open', ADMIT: '5' });
+  await quietly(() => waitingRoom({ env: wenv }));
+  assert.equal(outputs(wenv).admitted, '5');
+  await srv.close();
+  assert.equal(srv.calls.length, 7);
+});
+
+test('api-token needs app-id', async () => {
+  const env = envFor('http://x', { 'API-TOKEN': 'tok', CHANNEL: 'a', EVENT: 'b' });
+  delete env['INPUT_APP-ID'];
+  await assert.rejects(quietly(() => event({ env })), /app-id is required with api-token/);
+});
+
 test('an unknown command fails', async () => {
   const { logged } = await quietly(() => run({ INPUT_COMMAND: 'deploy' }));
   assert.match(logged, /command must be one of: approval, event, push, waiting-room/);

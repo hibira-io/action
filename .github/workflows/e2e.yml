@@ -150,6 +150,55 @@ jobs:
           admit: 5
       - run: test "${{ steps.room.outputs.status }}" = open
 
+      - name: event (api-token)
+        uses: ./
+        with:
+          command: event
+          app-id: ${{ steps.app.outputs.id }}
+          api-token: ${{ env.HIBIRA_API_TOKEN }}
+          channel: deploys
+          event: deploy.finished
+          data: '{"run":"${{ github.run_id }}","auth":"token"}'
+      - name: approval (api-token, open)
+        id: token-ask
+        uses: ./
+        with:
+          command: approval
+          app-id: ${{ steps.app.outputs.id }}
+          api-token: ${{ env.HIBIRA_API_TOKEN }}
+          title: e2e ${{ github.run_id }}, token
+          wait: false
+      - env:
+          URL: ${{ steps.token-ask.outputs.url }}
+        run: curl -sS -o /dev/null -w "answer %{http_code}\n" -X POST "$URL" --data-urlencode "choice=Approve"
+      - name: approval (api-token, wait)
+        id: token-wait
+        uses: ./
+        with:
+          command: approval
+          app-id: ${{ steps.app.outputs.id }}
+          api-token: ${{ env.HIBIRA_API_TOKEN }}
+          approval-id: ${{ steps.token-ask.outputs.approval-id }}
+      - run: test "${{ steps.token-wait.outputs.status }}" = approved
+      - name: push (api-token)
+        uses: ./
+        with:
+          command: push
+          app-id: ${{ steps.app.outputs.id }}
+          api-token: ${{ env.HIBIRA_API_TOKEN }}
+          push-interests: e2e
+          title: e2e ${{ github.run_id }} token
+      - name: waiting-room (api-token)
+        id: token-room
+        uses: ./
+        with:
+          command: waiting-room
+          app-id: ${{ steps.app.outputs.id }}
+          api-token: ${{ env.HIBIRA_API_TOKEN }}
+          room: e2e-token
+          state: paused
+      - run: test "${{ steps.token-room.outputs.status }}" = paused
+
       - name: Delete the app
         if: always() && steps.app.outputs.id != ''
         run: |

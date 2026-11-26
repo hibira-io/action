@@ -10,7 +10,7 @@ inputs:
     description: "What to do: approval, event, push or waiting-room."
     required: true
   app-id:
-    description: Your Hibira app's ID (approval, event, waiting-room).
+    description: Your Hibira app's ID (every command with api-token; otherwise approval, event, waiting-room).
     required: false
   key:
     description: Your Hibira app's key (approval, event, waiting-room).
@@ -22,6 +22,13 @@ inputs:
     description: The Hibira API host shown on your app page.
     required: false
     default: https://ws.hibira.io
+  api-token:
+    description: A Hibira API token with read and write access, from a repository secret. With it, every command needs only app-id, not key, secret, instance-id or push-secret-key.
+    required: false
+  api-url:
+    description: The Hibira account API host, for api-token.
+    required: false
+    default: https://hibira.io
 
   title:
     description: "approval: the question to decide. push: the notification title. waiting-room: the title on the wait page."

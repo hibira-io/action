@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.0
+
+- `api-token`: every command with only `app-id` and a Hibira API token, instead of the app key and secret and the push instance ID and secret key.
+
 ## 1.1.0
 
 - `approval-id`: wait for a request an earlier step opened with `wait: false`, so the approver can answer while the build runs.

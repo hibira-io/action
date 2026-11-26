@@ -180,6 +180,21 @@ jobs:
 
 Inputs: `room` (required), `state` (`open`, `paused` or `closed`), `admit` (let this many more in now), `admit-per-minute`, `starts-at`, `title`, `notice`. Outputs: `status`, `waiting`, `admitted`.
 
+## Only an API token
+
+Instead of the app key and secret (and the push instance ID and secret key), give an API token. Every command then needs only `app-id`:
+
+```yaml
+      - uses: hibira-io/action@v1
+        with:
+          command: approval
+          app-id: ${{ vars.HIBIRA_APP_ID }}
+          api-token: ${{ secrets.HIBIRA_API_TOKEN }}
+          title: Deploy ${{ github.ref_name }} to production?
+```
+
+Create the token in the [Hibira portal](https://hibira.io/portal) under Settings → AI agents, with read and write access. Limit it to the app and to the products the workflow uses (Realtime for `event`, Approvals for `approval`, Push for `push`, Waiting Room for `waiting-room`). Every change it makes shows in the account's activity log under the token's name.
+
 ## Host
 
 Every command takes `host`, the API host shown on your app page. The default is `https://ws.hibira.io`.
@@ -197,4 +212,4 @@ No dependencies and no build step: `npm test` runs the tests with Node's built-i
 - `push`：發送推播通知給你 app 的 Web、iOS、Android 使用者。
 - `waiting-room`：開啟、暫停、關閉排隊室或放人，可配合排程在發售時自動執行。
 
-app ID、key、secret 在 Hibira 主控台的 app 頁面；secret 請存成 repository secret。沒有任何相依套件，`npm test` 執行測試。
+app ID、key、secret 在 Hibira 主控台的 app 頁面；secret 請存成 repository secret。也可以只用 API token：填 `api-token`（在主控台 Settings → AI agents 建立，需讀寫權限），四個命令就只需要 `app-id`，不用 key、secret 或推播金鑰。沒有任何相依套件，`npm test` 執行測試。

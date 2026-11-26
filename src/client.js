@@ -96,3 +96,40 @@ export async function publishPush({ host, instanceId, secretKey, payload }) {
     20000,
   );
 }
+
+// TokenApp is one Hibira app through the account API with an API token
+// (https://hibira.io/api/v1), so a workflow needs no app key, secret or
+// push key. Its call takes the same resources as App's.
+export class TokenApp {
+  constructor({ appId, token, apiUrl }) {
+    if (!appId) throw new Error('app-id is required with api-token');
+    this.appId = appId;
+    this.token = token;
+    this.base = `${normalizeHost(apiUrl || 'https://hibira.io')}/api/v1/apps/${encodeURIComponent(appId)}`;
+  }
+
+  async call(method, resource, { query = {}, json, timeoutMs = 20000 } = {}) {
+    // The app-signed API's event body and room upsert, as the account API takes them.
+    if (method === 'POST' && resource === '/events') {
+      return this.request('POST', '/events', { json: { event: json.name, channels: json.channels, data: json.data }, timeoutMs });
+    }
+    const room = method === 'POST' && resource.match(/^\/waiting_rooms\/([^/]+)$/);
+    if (room) {
+      try {
+        return await this.request('PATCH', resource, { json, timeoutMs });
+      } catch (err) {
+        if (err.status !== 404) throw err;
+        return this.request('POST', '/waiting_rooms', { json: { id: decodeURIComponent(room[1]), ...json }, timeoutMs });
+      }
+    }
+    return this.request(method, resource, { query, json, timeoutMs });
+  }
+
+  async request(method, resource, { query = {}, json, timeoutMs = 20000 } = {}) {
+    const qs = new URLSearchParams(query).toString();
+    const headers = { 'User-Agent': USER_AGENT, Authorization: `Bearer ${this.token}` };
+    const body = json === undefined ? undefined : JSON.stringify(json);
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    return send(`${this.base}${resource}${qs ? `?${qs}` : ''}`, { method, headers, body }, timeoutMs);
+  }
+}

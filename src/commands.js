@@ -1,9 +1,11 @@
 import * as core from './core.js';
-import { App, publishPush } from './client.js';
+import { App, TokenApp, publishPush } from './client.js';
 
 const MAX_WAIT_SECONDS = 25;
 
 function appFrom(env, now) {
+  const token = core.input('api-token', env);
+  if (token) return new TokenApp({ appId: core.input('app-id', env), token, apiUrl: core.input('api-url', env) });
   return new App({
     appId: core.input('app-id', env),
     key: core.input('key', env),
@@ -173,12 +175,20 @@ export async function push({ env = process.env } = {}) {
   }
   const sendAt = core.input('send-at', env);
   if (sendAt) payload.send_at = sendAt;
-  const out = await publishPush({
-    host: core.input('host', env),
-    instanceId: core.input('instance-id', env),
-    secretKey: core.input('push-secret-key', env),
-    payload,
-  });
+  let out;
+  if (core.input('api-token', env)) {
+    const app = appFrom(env);
+    out = await app.request('POST', '/push/send', {
+      json: { ...(users.length ? { users } : { interests }), title, body, ...(link ? { url: link } : {}), ...(sendAt ? { send_at: sendAt } : {}) },
+    });
+  } else {
+    out = await publishPush({
+      host: core.input('host', env),
+      instanceId: core.input('instance-id', env),
+      secretKey: core.input('push-secret-key', env),
+      payload,
+    });
+  }
   core.setOutput('publish-id', out.publishId || out.publish_id || '', env);
   core.info(`Push sent to ${users.length ? `${users.length} user(s)` : interests.join(', ')}${sendAt ? ` at ${sendAt}` : ''}`);
 }
