@@ -1,0 +1,22 @@
+name: release
+# Moves the major tag (v1) to each published v1.x.y release, so
+# `uses: hibira-io/action@v1` picks it up.
+on:
+  release:
+    types: [published]
+permissions:
+  contents: write
+jobs:
+  major-tag:
+    runs-on: ubuntu-latest
+    if: startsWith(github.event.release.tag_name, 'v') && !github.event.release.prerelease
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          major="${TAG%%.*}"
+          git tag -f "$major"
+          git push -f origin "refs/tags/$major"

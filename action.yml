@@ -1,0 +1,130 @@
+name: Hibira
+description: Gate deploys on a person's approval from their phone, publish realtime events, send push notifications and run waiting rooms.
+author: Hibira
+branding:
+  icon: check-circle
+  color: red
+
+inputs:
+  command:
+    description: "What to do: approval, event, push or waiting-room."
+    required: true
+  app-id:
+    description: Your Hibira app's ID (approval, event, waiting-room).
+    required: false
+  key:
+    description: Your Hibira app's key (approval, event, waiting-room).
+    required: false
+  secret:
+    description: Your Hibira app's secret. Pass it from a repository secret (approval, event, waiting-room).
+    required: false
+  host:
+    description: The Hibira API host shown on your app page.
+    required: false
+    default: https://ws.hibira.io
+
+  title:
+    description: "approval: the question to decide. push: the notification title. waiting-room: the title on the wait page."
+    required: false
+  details:
+    description: "approval: more context for the approver. Defaults to the repository, ref, commit, actor and a link to this run."
+    required: false
+  options:
+    description: "approval: the answers, one per line or comma-separated. The first one approves."
+    required: false
+    default: |
+      Approve
+      Reject
+  approvers:
+    description: "approval: team members' emails or approver group slugs, one per line or comma-separated (Approvals workspace apps)."
+    required: false
+  quorum:
+    description: "approval: how many approvers must approve."
+    required: false
+  timeout-minutes:
+    description: "approval: how long to wait for an answer, 1 to 10080. The request expires then."
+    required: false
+    default: "60"
+  fail-on-reject:
+    description: "approval: fail the step when the answer is not approved (rejected or expired)."
+    required: false
+    default: "true"
+  wait:
+    description: "approval: wait for the answer. Set to false to only open the request and output its link."
+    required: false
+    default: "true"
+  push-interests:
+    description: "approval or push: push notification interests, one per line or comma-separated."
+    required: false
+  push-users:
+    description: "approval or push: push notification user IDs, one per line or comma-separated."
+    required: false
+
+  channel:
+    description: "event: the channels to publish to, one per line or comma-separated (up to 100). approval: a channel that gets an \"approval\" event on request and decision."
+    required: false
+  event:
+    description: "event: the event name."
+    required: false
+  data:
+    description: "event: the event data. JSON is sent as is; anything else is sent as a string."
+    required: false
+
+  instance-id:
+    description: "push: the push instance ID from your app page (Push notifications)."
+    required: false
+  push-secret-key:
+    description: "push: the push instance's secret key. Pass it from a repository secret."
+    required: false
+  body:
+    description: "push: the notification text."
+    required: false
+  url:
+    description: "push: an https link opened when the notification is tapped."
+    required: false
+  send-at:
+    description: "push: an RFC 3339 time to send it at, up to 30 days ahead."
+    required: false
+
+  room:
+    description: "waiting-room: the room ID."
+    required: false
+  state:
+    description: "waiting-room: open, paused or closed."
+    required: false
+  admit:
+    description: "waiting-room: let this many more visitors in now."
+    required: false
+  admit-per-minute:
+    description: "waiting-room: how many visitors to let in per minute."
+    required: false
+  starts-at:
+    description: "waiting-room: an RFC 3339 time the line starts moving."
+    required: false
+  notice:
+    description: "waiting-room: an announcement shown on the wait page."
+    required: false
+
+outputs:
+  approval-id:
+    description: "approval: the request's ID."
+  url:
+    description: "approval: the link where the request is answered."
+  status:
+    description: "approval: pending, approved, rejected or expired. waiting-room: the room's state."
+  choice:
+    description: "approval: the option chosen."
+  comment:
+    description: "approval: the approver's comment."
+  answered-by:
+    description: "approval: who answered (email)."
+  publish-id:
+    description: "push: the publish ID."
+  waiting:
+    description: "waiting-room: visitors still waiting."
+  admitted:
+    description: "waiting-room: the admission line."
+
+runs:
+  using: node24
+  main: src/index.js

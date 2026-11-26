@@ -1,0 +1,11 @@
+{
+  "name": "hibira-action",
+  "private": true,
+  "description": "Hibira for GitHub Actions: deploy approvals, realtime events, push notifications and waiting rooms",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
