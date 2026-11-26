@@ -18,11 +18,18 @@ jobs:
       API: https://hibira.io/api/v1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Delete apps an earlier run left behind
+        run: |
+          if [ -z "$HIBIRA_API_TOKEN" ]; then echo "::error::HIBIRA_API_TOKEN is not available to this repository"; exit 1; fi
+          curl -sS -f --retry 3 --retry-all-errors "$API/apps" -H "Authorization: Bearer $HIBIRA_API_TOKEN" \
+            | jq -r '(.items // .apps // .)[] | select(.name | startswith("action-e2e-")) | "\(.id) \(.version)"' \
+            | while read -r id version; do
+                curl -sS -f --retry 3 --retry-all-errors -X DELETE "$API/apps/$id?version=$version" -H "Authorization: Bearer $HIBIRA_API_TOKEN" -o /dev/null -w "deleted $id %{http_code}\n"
+              done
       - name: Create a throwaway app
         id: app
         run: |
-          if [ -z "$HIBIRA_API_TOKEN" ]; then echo "::error::HIBIRA_API_TOKEN is not available to this repository"; exit 1; fi
-          out=$(curl -sS -f -X POST "$API/apps" -H "Authorization: Bearer $HIBIRA_API_TOKEN" -H 'Content-Type: application/json' \
+          out=$(curl -sS -f --retry 3 --retry-all-errors -X POST "$API/apps" -H "Authorization: Bearer $HIBIRA_API_TOKEN" -H 'Content-Type: application/json' \
             -d "{\"name\":\"action-e2e-$GITHUB_RUN_ID\",\"allowed_origins\":[\"https://example.com\"]}")
           secret=$(jq -r .secret <<<"$out")
           echo "::add-mask::$secret"
@@ -104,8 +111,8 @@ jobs:
       - name: Enable push
         id: push
         run: |
-          curl -sS -f -X POST "$API/apps/${{ steps.app.outputs.id }}/push" -H "Authorization: Bearer $HIBIRA_API_TOKEN" -H 'Content-Type: application/json' -d '{}' > /dev/null
-          out=$(curl -sS -f "$API/apps/${{ steps.app.outputs.id }}/push" -H "Authorization: Bearer $HIBIRA_API_TOKEN")
+          curl -sS -f --retry 3 --retry-all-errors -X POST "$API/apps/${{ steps.app.outputs.id }}/push" -H "Authorization: Bearer $HIBIRA_API_TOKEN" -H 'Content-Type: application/json' -d '{}' > /dev/null
+          out=$(curl -sS -f --retry 3 --retry-all-errors "$API/apps/${{ steps.app.outputs.id }}/push" -H "Authorization: Bearer $HIBIRA_API_TOKEN")
           key=$(jq -r '.secret_key // empty' <<<"$out")
           echo "::add-mask::$key"
           echo "HIBIRA_PUSH_SECRET_KEY=$key" >> "$GITHUB_ENV"
@@ -147,5 +154,5 @@ jobs:
         if: always() && steps.app.outputs.id != ''
         run: |
           id=${{ steps.app.outputs.id }}
-          version=$(curl -sS -f "$API/apps/$id" -H "Authorization: Bearer $HIBIRA_API_TOKEN" | jq -r .version)
-          curl -sS -f -X DELETE "$API/apps/$id?version=$version" -H "Authorization: Bearer $HIBIRA_API_TOKEN" -o /dev/null -w "deleted %{http_code}\n"
+          version=$(curl -sS -f --retry 3 --retry-all-errors "$API/apps/$id" -H "Authorization: Bearer $HIBIRA_API_TOKEN" | jq -r .version)
+          curl -sS -f --retry 3 --retry-all-errors -X DELETE "$API/apps/$id?version=$version" -H "Authorization: Bearer $HIBIRA_API_TOKEN" -o /dev/null -w "deleted %{http_code}\n"

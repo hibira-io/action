@@ -6,7 +6,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { signedQuery } from '../src/client.js';
+import { signedQuery, send } from '../src/client.js';
 import { approval, event, push, waitingRoom, dataString, defaultDetails } from '../src/commands.js';
 import { run } from '../src/main.js';
 import { setWriter } from '../src/core.js';
@@ -237,6 +237,17 @@ test('API errors fail the step with the server message', async () => {
   assert.match(logged, /::error::Hibira API 403: this plan has no waiting rooms/);
   assert.equal(process.exitCode, 1);
   process.exitCode = 0;
+});
+
+test('a 522 from the edge is sent again; a 500 is not', async () => {
+  let srv = await serve((req, body, n) => (n < 3 ? [522, { error: 'origin unreachable' }] : [200, { ok: true }]));
+  assert.deepEqual(await send(`${srv.host}/x`, { method: 'POST', body: '{}' }, 5000, { delayMs: 1 }), { ok: true });
+  assert.equal(srv.calls.length, 3);
+  await srv.close();
+  srv = await serve(() => [500, { error: 'boom' }]);
+  await assert.rejects(send(`${srv.host}/x`, { method: 'POST', body: '{}' }, 5000, { delayMs: 1 }), /500: boom/);
+  assert.equal(srv.calls.length, 1);
+  await srv.close();
 });
 
 test('an unknown command fails', async () => {

@@ -27,7 +27,23 @@ export function normalizeHost(host) {
   return h;
 }
 
-async function send(url, init, timeoutMs) {
+// Answers that mean the request never reached Hibira (a proxy or the edge
+// could not reach it), so sending it again cannot do it twice.
+const NOT_REACHED = new Set([502, 503, 504, 520, 521, 522, 523, 524, 525, 526]);
+
+export async function send(url, init, timeoutMs, { retries = 2, delayMs = 2000 } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await sendOnce(url, init, timeoutMs);
+    } catch (err) {
+      const retryable = err instanceof ApiError ? NOT_REACHED.has(err.status) : init.method === 'GET';
+      if (!retryable || attempt >= retries) throw err;
+      await new Promise((r) => setTimeout(r, delayMs * (attempt + 1)));
+    }
+  }
+}
+
+async function sendOnce(url, init, timeoutMs) {
   const res = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
   const text = await res.text();
   let json;

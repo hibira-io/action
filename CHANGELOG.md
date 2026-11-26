@@ -4,6 +4,7 @@
 
 - `approval-id`: wait for a request an earlier step opened with `wait: false`, so the approver can answer while the build runs.
 - README: deploy notifications.
+- Requests that never reached Hibira (502, 503, 504, 52x from the edge) are sent again, up to twice.
 
 ## 1.0.0
 
