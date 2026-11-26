@@ -113,9 +113,9 @@ test('approval waits through a question and outputs the decision', async () => {
     assert.match(req.url, /^\/apps\/7\/approvals\/apr_1\?/);
     assert.equal(new URL(req.url, 'http://x').searchParams.get('wait'), '25');
     if (n === 2) {
-      return [200, { approval_id: 'apr_1', status: 'pending', awaiting_reply: true, url: 'u', discussion: [{ id: 'm1', from: 'approver', name: 'Bo', text: 'Which region?' }] }];
+      return [200, { approval_id: 'apr_1', status: 'pending', awaiting_reply: true, discussion: [{ id: 'm1', from: 'approver', name: 'Bo', text: 'Which region?' }] }];
     }
-    return [200, { approval_id: 'apr_1', status: 'approved', url: 'https://hibira.io/a/apr_1', choice: 'Ship it', comment: 'go', answered_by: { email: 'bo@acme.test', name: 'Bo' } }];
+    return [200, { approval_id: 'apr_1', status: 'approved', choice: 'Ship it', comment: 'go', answered_by: { email: 'bo@acme.test', name: 'Bo' } }];
   });
   const env = envFor(srv.host, { TITLE: 'Deploy v1.2 to production?', OPTIONS: 'Ship it\nHold', 'PUSH-INTERESTS': 'oncall', 'TIMEOUT-MINUTES': '30' });
   const slept = [];
@@ -123,12 +123,13 @@ test('approval waits through a question and outputs the decision', async () => {
   await srv.close();
   assert.equal(srv.calls.length, 3);
   assert.deepEqual(slept, [5000]);
-  assert.match(logged, /Bo asked: Which region\?/);
+  assert.match(logged, /Bo asked: "Which region\?"/);
   const out = outputs(env);
   assert.equal(out.status, 'approved');
   assert.equal(out.choice, 'Ship it');
   assert.equal(out['answered-by'], 'bo@acme.test');
   assert.equal(out['approval-id'], 'apr_1');
+  assert.equal(out.url, 'https://hibira.io/a/apr_1', 'the link survives a status answer without it');
   assert.match(readFileSync(env.GITHUB_STEP_SUMMARY, 'utf8'), /Answer it here\]\(https:\/\/hibira.io\/a\/apr_1\)/);
 });
 

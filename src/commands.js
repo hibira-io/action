@@ -49,7 +49,7 @@ export async function approval({ env = process.env, now, sleep = defaultSleep } 
   if (existing) {
     a = await app.call('GET', `/approvals/${encodeURIComponent(existing)}`);
     setApprovalOutputs(a, env);
-    core.info(`Waiting for the answer to "${a.title}": ${a.url}`);
+    core.info(`Waiting for the answer to "${a.title}"${a.url ? `: ${a.url}` : ''}`);
   } else {
     const request = newRequest(env, minutes);
     a = await app.call('POST', '/approvals', { json: request });
@@ -71,10 +71,13 @@ export async function approval({ env = process.env, now, sleep = defaultSleep } 
     const wait = Math.min(MAX_WAIT_SECONDS, left);
     const started = clock();
     try {
+      const prev = a;
       a = await app.call('GET', `/approvals/${encodeURIComponent(a.approval_id)}`, {
         query: { wait: String(wait) },
         timeoutMs: (wait + 15) * 1000,
       });
+      // The status answer leaves out the link; keep the one from the request.
+      if (!a.url) a.url = prev.url;
     } catch (err) {
       if (err.status && err.status < 500 && err.status !== 429) throw err;
       core.warning(`Checking the approval failed, trying again: ${err.message}`);
@@ -84,7 +87,7 @@ export async function approval({ env = process.env, now, sleep = defaultSleep } 
     for (const m of a.discussion || []) {
       if (m.from === 'approver' && !seen.has(m.id)) {
         seen.add(m.id);
-        core.notice(`${m.name || 'The approver'} asked: ${m.text}. Answer on the approval page or with the Hibira MCP reply_approval tool.`, 'Question from the approver');
+        core.notice(`${m.name || 'The approver'} asked: "${m.text}" Answer on the approval page or with the Hibira MCP reply_approval tool.`, 'Question from the approver');
       }
     }
     // An open question returns at once; don't spin while it waits.
