@@ -1,4 +1,4 @@
-name: Hibira
+name: Hibira Deploy Approvals
 description: Gate deploys on a person's approval from their phone, publish realtime events, send push notifications and run waiting rooms.
 author: Hibira
 branding:
